@@ -54,7 +54,14 @@ class WasteRouteOptimizer:
         # OpenAI 클라이언트 초기화
         self.openai_client = openai.OpenAI(api_key="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")
         
-        # 한글 폰트 등록
+        # 한글 폰트 등록 (NanumGothic)
+        from reportlab.pdfbase.ttfonts import TTFont
+        from reportlab.pdfbase import pdfmetrics
+        try:
+            pdfmetrics.registerFont(TTFont('NanumGothic', 'NanumGothic.ttf'))
+        except:
+            pass
+        
         self.register_korean_fonts()
         
         self.init_session()
@@ -671,37 +678,22 @@ class WasteRouteOptimizer:
 
     def display_metrics(self, df, routes_data=None):
         """주요 메트릭 표시"""
-        col1, col2, col3, col4 = st.columns(4)
-        
+        col1, col2 = st.columns(2)
         with col1:
             st.metric("총 수거함 수", len(df))
-        
         with col2:
-            high_priority = len(df[df['우선순위'] >= 2])
-            st.metric("고우선순위 (P≥2)", high_priority)
-        
-        with col3:
-            avg_priority = df['우선순위'].mean()
-            st.metric("평균 우선순위", f"{avg_priority:.1f}")
-        
-        with col4:
             if routes_data:
                 active_vehicles = routes_data.get('active_vehicles', routes_data['total_vehicles'])
                 total_vehicles = routes_data['total_vehicles']
                 st.metric("차량 활용률", f"{active_vehicles}/{total_vehicles}대")
-        
-        # 추가 메트릭
-        col5, col6, col7 = st.columns(3)
-        
-        with col5:
+        col3, col4, col5 = st.columns(3)
+        with col3:
             incineration_count = len(df[df['용도'].str.contains('소각', na=False)])
             st.metric("소각용 수거함", incineration_count)
-        
-        with col6:
+        with col4:
             recycling_count = len(df[df['용도'].str.contains('재활용', na=False)])
             st.metric("재활용 수거함", recycling_count)
-        
-        with col7:
+        with col5:
             if routes_data:
                 st.metric("총 이동거리", f"{routes_data['total_distance']:.1f}km")
 
@@ -886,19 +878,13 @@ class WasteRouteOptimizer:
         story = []
         
         # 한글 폰트 설정
-        try:
-            # 등록된 폰트 확인
-            font_name = "NanumHuman"
-            bold_font = "NanumHuman-Bold"
-            pdfmetrics.getFont(font_name)
-        except:
-            font_name = "Helvetica"
-            bold_font = "Helvetica-Bold"
+        font_name = "NanumGothic"
+        bold_font = "NanumGothic"
         
         # 제목 스타일
         title_style = ParagraphStyle(
             'CustomTitle',
-            fontName=bold_font,
+            fontName=font_name,
             fontSize=18,
             spaceAfter=30,
             alignment=1  # 중앙 정렬
@@ -907,7 +893,7 @@ class WasteRouteOptimizer:
         # 부제목 스타일
         subtitle_style = ParagraphStyle(
             'CustomSubtitle',
-            fontName=bold_font,
+            fontName=font_name,
             fontSize=14,
             spaceAfter=12
         )
@@ -941,8 +927,7 @@ class WasteRouteOptimizer:
             ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), bold_font),
-            ('FONTNAME', (0, 1), (-1, -1), font_name),
+            ('FONTNAME', (0, 0), (-1, -1), font_name),
             ('FONTSIZE', (0, 0), (-1, 0), 12),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
             ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
@@ -967,8 +952,7 @@ class WasteRouteOptimizer:
                 ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), bold_font),
-                ('FONTNAME', (0, 1), (-1, -1), font_name),
+                ('FONTNAME', (0, 0), (-1, -1), font_name),
                 ('FONTSIZE', (0, 0), (-1, 0), 12),
                 ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
                 ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
@@ -993,282 +977,77 @@ class WasteRouteOptimizer:
         return buffer
 
     def create_html_report(self, df, routes_data, insights_text):
-        """HTML 형식의 세련된 보고서 생성"""
+        """HTML 형식의 세련된 보고서 생성 (OpenAI API 활용)"""
         current_time = datetime.now().strftime('%Y년 %m월 %d일 %H시 %M분')
-        
-        total_boxes = len(df)
-        total_departments = df['부서'].nunique()
-        avg_priority = df['우선순위'].mean()
-        tonnage_5 = len(df[df['톤수'] == 5.0])
-        tonnage_85 = len(df[df['톤수'] == 8.5])
-        
-        html_content = f"""<!DOCTYPE html>
-<html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>광양제철소 폐기물 수거 최적화 보고서</title>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
-        
-        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        
-        body {{
-            font-family: 'Noto Sans KR', sans-serif;
-            line-height: 1.6;
-            color: #333;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }}
-        
-        .container {{
-            max-width: 1200px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }}
-        
-        .header {{
-            background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
-            color: white;
-            padding: 40px;
-            text-align: center;
-        }}
-        
-        .header h1 {{
-            font-size: 2.5rem;
-            font-weight: 700;
-            margin-bottom: 10px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-        }}
-        
-        .header .subtitle {{
-            font-size: 1.1rem;
-            opacity: 0.9;
-            font-weight: 300;
-        }}
-        
-        .content {{ padding: 40px; }}
-        
-        .section {{
-            margin-bottom: 40px;
-            background: #f8f9fa;
-            border-radius: 15px;
-            padding: 30px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
-        }}
-        
-        .section-title {{
-            font-size: 1.8rem;
-            font-weight: 600;
-            color: #2c3e50;
-            margin-bottom: 20px;
-            border-left: 5px solid #3498db;
-            padding-left: 15px;
-        }}
-        
-        .stats-grid {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin: 20px 0;
-        }}
-        
-        .stat-card {{
-            background: white;
-            padding: 25px;
-            border-radius: 12px;
-            text-align: center;
-            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
-            border: 1px solid #e9ecef;
-            transition: transform 0.3s ease;
-        }}
-        
-        .stat-card:hover {{
-            transform: translateY(-5px);
-            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
-        }}
-        
-        .stat-number {{
-            font-size: 2.2rem;
-            font-weight: 700;
-            color: #3498db;
-            margin-bottom: 5px;
-        }}
-        
-        .stat-label {{
-            font-size: 0.9rem;
-            color: #666;
-            font-weight: 500;
-        }}
-        
-        .insights-content {{
-            background: white;
-            padding: 25px;
-            border-radius: 12px;
-            line-height: 1.8;
-            font-size: 1rem;
-            border-left: 4px solid #27ae60;
-        }}
-        
-        .route-summary {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin: 20px 0;
-        }}
-        
-        .route-card {{
-            background: white;
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
-            border-top: 4px solid #e74c3c;
-        }}
-        
-        .route-card h4 {{
-            color: #2c3e50;
-            font-weight: 600;
-            margin-bottom: 15px;
-        }}
-        
-        .route-metric {{
-            display: flex;
-            justify-content: space-between;
-            margin: 8px 0;
-            padding: 5px 0;
-            border-bottom: 1px solid #eee;
-        }}
-        
-        .metric-label {{ color: #666; font-weight: 500; }}
-        .metric-value {{ color: #2c3e50; font-weight: 600; }}
-        
-        .footer {{
-            background: #2c3e50;
-            color: white;
-            text-align: center;
-            padding: 20px;
-            font-size: 0.9rem;
-        }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>🚛 광양제철소 폐기물 수거 최적화 보고서</h1>
-            <div class="subtitle">AI 기반 경로 최적화 및 데이터 분석 결과</div>
-            <div class="subtitle">생성일: {current_time}</div>
-        </div>
-        
-        <div class="content">
-            <div class="section">
-                <h2 class="section-title">📊 데이터 개요</h2>
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="stat-number">{total_boxes}</div>
-                        <div class="stat-label">총 수거함 수</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number">{total_departments}</div>
-                        <div class="stat-label">관련 부서 수</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number">{avg_priority:.1f}</div>
-                        <div class="stat-label">평균 우선순위</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number">{tonnage_5}</div>
-                        <div class="stat-label">5톤 수거함</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number">{tonnage_85}</div>
-                        <div class="stat-label">8.5톤 수거함</div>
-                    </div>
-                </div>
-            </div>
+        # 데이터 요약 및 경로 최적화 요약을 프롬프트로 생성
+        data_summary = f"""
+        - 총 수거함 수: {len(df)}개
+        - 부서 수: {df['부서'].nunique()}개
+        - 소각용 수거함: {len(df[df['용도'].str.contains('소각', na=False)])}개
+        - 재활용 수거함: {len(df[df['용도'].str.contains('재활용', na=False)])}개
+        - 차량 활용률: {routes_data.get('active_vehicles', routes_data['total_vehicles'])}/{routes_data['total_vehicles']}대
+        - 총 이동거리: {routes_data['total_distance']:.1f}km
         """
-        
-        # 경로 최적화 결과 섹션
-        if routes_data:
-            active_vehicles = routes_data.get('active_vehicles', routes_data['total_vehicles'])
-            total_vehicles = routes_data['total_vehicles']
-            total_distance = routes_data['total_distance']
-            optimization_method = routes_data['optimization_method']
-            
-            html_content += f"""
-            <div class="section">
-                <h2 class="section-title">🚛 경로 최적화 결과</h2>
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="stat-number">{total_vehicles}</div>
-                        <div class="stat-label">총 차량 수</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number">{active_vehicles}</div>
-                        <div class="stat-label">활성 차량 수</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number">{total_distance:.1f}km</div>
-                        <div class="stat-label">총 이동 거리</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number">{optimization_method.split()[0]}</div>
-                        <div class="stat-label">최적화 방식</div>
-                    </div>
-                </div>
-                
-                <div class="route-summary">
-            """
-            
-            for route in routes_data['routes']:
-                has_assignments = route.get('has_assignments', len(route['data']) > 0)
-                status = "활성" if has_assignments else "대기"
-                
-                html_content += f"""
-                    <div class="route-card">
-                        <h4>🚚 차량 {route['vehicle_id']} - {status}</h4>
-                        <div class="route-metric">
-                            <span class="metric-label">수거 유형</span>
-                            <span class="metric-value">{route['tonnage_type']}</span>
-                        </div>
-                        <div class="route-metric">
-                            <span class="metric-label">수거 개수</span>
-                            <span class="metric-value">{route['collection_count']}/{route['max_count']}개</span>
-                        </div>
-                        <div class="route-metric">
-                            <span class="metric-label">이동 거리</span>
-                            <span class="metric-value">{route['distance']:.1f}km</span>
-                        </div>
-                        <div class="route-metric">
-                            <span class="metric-label">고우선순위</span>
-                            <span class="metric-value">{route['high_priority_count']}개</span>
-                        </div>
-                    </div>
-                """
-            
-            html_content += "</div></div>"
-        
-        # AI 인사이트 섹션
-        formatted_insights = insights_text.replace('\n', '<br>')
-        html_content += f"""
-            <div class="section">
-                <h2 class="section-title">🤖 AI 분석 인사이트</h2>
-                <div class="insights-content">
-                    {formatted_insights}
-                </div>
+        prompt = f"""
+        다음은 광양제철소 폐기물 수거 경로 최적화 데이터입니다. 아래 요약 데이터를 참고하여, 관리자/심사위원이 한눈에 이해할 수 있도록 깔끔하고 전문적인 HTML 보고서를 작성해 주세요. 표, 리스트, 강조, 구분선 등을 적절히 활용하고, 한글 폰트가 잘 보이도록 해주세요.
+
+        [데이터 요약]
+        {data_summary}
+
+        [경로 최적화 결과]
+        {routes_data}
+
+        [AI 인사이트]
+        {insights_text}
+
+        - 제목, 부제목, 주요 수치, 경로 요약, 인사이트, 결론(제안) 등으로 구성
+        - 표와 리스트, 강조, 구분선 등을 적절히 활용
+        - 한글 폰트는 Noto Sans KR, Nanum Gothic, Malgun Gothic, Arial, sans-serif로 지정
+        - 너무 장황하지 않게, 명확하고 읽기 쉽게 작성
+        """
+        # OpenAI API 호출
+        try:
+            response = self.openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": "당신은 산업용 폐기물 수거 최적화 전문가이자, 멋진 HTML 보고서 디자이너입니다. 데이터를 분석하여 실용적이고 시각적으로 깔끔한 HTML 보고서를 작성합니다."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=1800,
+                temperature=0.5
+            )
+            ai_html = response.choices[0].message.content
+        except Exception as e:
+            ai_html = f"<div style='color:red;'>OpenAI API 오류: {e}</div>"
+        # HTML 최종 래핑 (폰트 적용)
+        html_content = f"""
+        <!DOCTYPE html>
+        <html lang='ko'>
+        <head>
+            <meta charset='UTF-8'>
+            <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+            <title>광양제철소 폐기물 수거 최적화 보고서</title>
+            <link href='https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap' rel='stylesheet'>
+            <style>
+                body {{ font-family: 'Noto Sans KR', 'Nanum Gothic', 'Malgun Gothic', Arial, sans-serif; background: #fafdff; margin: 0; padding: 0; }}
+                .header-posco {{ background: linear-gradient(90deg, #1f77b4 0%, #00b4d8 100%); color: white; padding: 32px 0 16px 0; border-radius: 18px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); margin-bottom: 24px; text-align: center; }}
+                .header-posco h1 {{ font-size: 2.8rem; font-weight: 800; letter-spacing: -1px; margin-bottom: 0.5em; text-shadow: 2px 2px 8px rgba(0,0,0,0.10); }}
+                .header-posco .subtitle {{ color: #e0f7fa; font-size: 1.2rem; font-weight: 400; }}
+                .content-wrap {{ max-width: 900px; margin: 0 auto; background: #fff; border-radius: 18px; box-shadow: 0 2px 16px rgba(0,0,0,0.06); padding: 32px 32px 40px 32px; }}
+            </style>
+        </head>
+        <body>
+            <div class='header-posco'>
+                <h1>🚛 광양제철소 폐기물 수거 최적화 보고서</h1>
+                <div class='subtitle'>AI 기반 경로 최적화 & 데이터 분석</div>
+                <div class='subtitle'>생성일: {current_time}</div>
             </div>
-        </div>
-        
-        <div class="footer">
-            <p>© 2024 광양제철소 폐기물 수거 최적화 시스템 | AI 기반 경로 최적화 및 데이터 분석</p>
-        </div>
-    </div>
-</body>
-</html>"""
-        
+            <div class='content-wrap'>
+                {ai_html}
+            </div>
+        </body>
+        </html>
+        """
         return html_content
 
     def create_vehicle_html_report(self, route):
