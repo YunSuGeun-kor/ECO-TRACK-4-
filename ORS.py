@@ -31,6 +31,7 @@ import base64
 import tempfile
 import warnings
 warnings.filterwarnings('ignore')
+from io import StringIO
 
 # 페이지 설정
 st.set_page_config(
@@ -47,7 +48,7 @@ class WasteRouteOptimizer:
         self.ors_client = ors.Client(key=self.ors_api_key)
         
         # OpenAI 클라이언트 초기화
-        self.openai_client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        self.openai_client = openai.OpenAI(api_key="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")
         
         # 한글 폰트 등록
         self.register_korean_fonts()
@@ -107,54 +108,59 @@ class WasteRouteOptimizer:
 
     def normalize_columns(self, df):
         """컬럼명 정규화 및 표준화"""
-        # 컬럼 매핑
+        # 컬럼 매핑 (내장 CSV 컬럼명 반영)
         COL_MAP = {
             '박스 위치': '위치',
-            '박스 위치 ': '위치',
             '위치명': '위치',
+            '위치': '위치',
             '톤': '톤수',
-            'ton': '톤수',
             '부서명': '부서',
-            'Department': '부서',
+            '부서코드': '부서코드',
             '박스구분': '용도',
             '구분': '용도',
             '위도(DD)': '좌표_위도',
             '경도(DD)': '좌표_경도',
             '위도': '좌표_위도',
-            '경도': '좌표_경도'
+            '경도': '좌표_경도',
+            '위도(DMS)': '위도_DMS',
+            '경도(DMS)': '경도_DMS',
+            '위치정보(DD)': '위치정보_DD',
+            '위치정보(DMS)': '위치정보_DMS'
         }
-        
         # 컬럼명 변경
         df = df.rename(columns={k: v for k, v in COL_MAP.items() if k in df.columns})
-        
         # Unnamed 컬럼 제거
         df = df.loc[:, ~df.columns.str.startswith('Unnamed')]
-        
         # 좌표 데이터 처리
+        if '좌표_경도' not in df.columns and '경도(DD)' in df.columns:
+            df['좌표_경도'] = pd.to_numeric(df['경도(DD)'], errors='coerce')
+        if '좌표_위도' not in df.columns and '위도(DD)' in df.columns:
+            df['좌표_위도'] = pd.to_numeric(df['위도(DD)'], errors='coerce')
         if '좌표_경도' in df.columns:
             df['좌표_경도'] = pd.to_numeric(df['좌표_경도'], errors='coerce')
             df['좌표_경도'] = df['좌표_경도'].apply(lambda x: round(x, 10) if pd.notna(x) else x)
         if '좌표_위도' in df.columns:
             df['좌표_위도'] = pd.to_numeric(df['좌표_위도'], errors='coerce')
             df['좌표_위도'] = df['좌표_위도'].apply(lambda x: round(x, 10) if pd.notna(x) else x)
-        
         # 표준 컬럼 정의
         STANDARD_COLS = ['박스번호', '위치', '부서', '좌표_경도', '좌표_위도', '수거빈도', '지연일수', '톤수', '용도', '접수일']
-        
         # 누락된 컬럼 생성
         for col in STANDARD_COLS:
             if col not in df.columns:
                 if col in ['수거빈도', '지연일수']:
                     df[col] = np.random.randint(1, 10, len(df))
                 elif col == '톤수':
-                    df[col] = np.random.uniform(0.5, 3.0, len(df))
+                    # 내장 CSV의 '톤' 컬럼을 '톤수'로 매핑
+                    if '톤' in df.columns:
+                        df['톤수'] = pd.to_numeric(df['톤'], errors='coerce')
+                    else:
+                        df[col] = np.random.uniform(0.5, 3.0, len(df))
                 elif col == '접수일':
                     df[col] = pd.date_range(start='2024-01-01', periods=len(df))
                 elif col == '박스번호':
                     df[col] = range(1, len(df) + 1)
                 else:
                     df[col] = ''
-        
         # 문제가 있는 33번 수거함 제거
         initial_count = len(df)
         if '박스번호' in df.columns:
@@ -162,7 +168,6 @@ class WasteRouteOptimizer:
             filtered_count = len(df)
             if filtered_count < initial_count:
                 st.warning("⚠️ 33번 수거함은 좌표 오류로 인해 자동으로 제외되었습니다.")
-        
         return df[STANDARD_COLS]
 
     def calculate_priority_score(self, df):
@@ -1894,7 +1899,7 @@ class WasteRouteOptimizer:
                             f"최대 수거 개수",
                             min_value=1,
                             max_value=50,
-                            value=20,
+                            value=6,
                             key=f"vehicle_{vehicle_num}_max_count",
                             help="해당 차량이 수거할 수 있는 최대 수거함 개수"
                         )
@@ -1902,7 +1907,7 @@ class WasteRouteOptimizer:
             else:
                 st.warning("차량을 선택해주세요.")
                 vehicle_capacities = [8.5]
-                vehicle_max_counts = [20]
+                vehicle_max_counts = [6]
             
             # 차량별 수거 유형 요약
             capacity_summary = {}
@@ -1919,17 +1924,16 @@ class WasteRouteOptimizer:
             summary_text = ", ".join(summary_parts)
             st.info(f"차량 배치: {summary_text}")
             
-            # 박스번호 필터
-            st.subheader("📦 박스 필터")
-            box_input = st.text_area(
-                "특정 박스번호 입력",
-                value=st.session_state.box_input,
-                height=100,
-                help="쉼표, 공백, 줄바꿈으로 구분하여 입력"
-            )
-            
-            if box_input != st.session_state.box_input:
-                st.session_state.box_input = box_input
+            # 박스번호 필터 (삭제)
+            # st.subheader("📦 박스 필터")
+            # box_input = st.text_area(
+            #     "특정 박스번호 입력",
+            #     value=st.session_state.box_input,
+            #     height=100,
+            #     help="쉼표, 공백, 줄바꿈으로 구분하여 입력"
+            # )
+            # if box_input != st.session_state.box_input:
+            #     st.session_state.box_input = box_input
 
         # 데이터 로드
         if uploaded_file:
@@ -1944,14 +1948,14 @@ class WasteRouteOptimizer:
             st.info("📁 데이터 파일을 업로드하여 시작하세요.")
             return
         
-        # 박스번호 필터링
-        if box_input and box_input.strip():
-            selected_boxes = re.findall(r'\d+', box_input)
-            if selected_boxes:
-                selected_boxes = list(map(int, selected_boxes))
-                df = df[df['박스번호'].isin(selected_boxes)]
-                st.info(f"🔍 {len(selected_boxes)}개 박스 선택됨 → 표시된 데이터: {len(df)}개")
-        
+        # 박스번호 필터링 (삭제)
+        # if box_input and box_input.strip():
+        #     selected_boxes = re.findall(r'\d+', box_input)
+        #     if selected_boxes:
+        #         selected_boxes = list(map(int, selected_boxes))
+        #         df = df[df['박스번호'].isin(selected_boxes)]
+        #         st.info(f"🔍 {len(selected_boxes)}개 박스 선택됨 → 표시된 데이터: {len(df)}개")
+
         # 경로 최적화 실행
         col1, col2 = st.columns([3, 1])
         with col1:
