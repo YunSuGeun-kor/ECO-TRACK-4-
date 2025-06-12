@@ -499,7 +499,7 @@ class WasteRouteOptimizer:
         # Folium 지도 생성
         m = folium.Map(
             location=[center_lat, center_lon],
-            zoom_start=13,
+            zoom_start=15,
             tiles='OpenStreetMap'
         )
 
@@ -624,13 +624,24 @@ class WasteRouteOptimizer:
             color_discrete_sequence=['green', 'orange', 'red']
         )
         
-        # 3. 톤수 분포 (히스토그램)
-        charts['tonnage_distribution'] = px.histogram(
-            df, 
-            x='톤수', 
-            nbins=20,
+        # 3. 톤수 분포 (막대그래프, 5톤/8.5톤만, 색상 다르게, 간격 없음, 얇은 막대)
+        tonnage_counts = df['톤수'].value_counts().sort_index()
+        tonnage_df = pd.DataFrame({
+            '톤수': tonnage_counts.index.astype(str) + '톤',
+            '수거함_수': tonnage_counts.values
+        })
+        charts['tonnage_distribution'] = px.bar(
+            tonnage_df,
+            x='톤수',
+            y='수거함_수',
+            color='톤수',
+            color_discrete_sequence=['#1f77b4', '#ff7f0e'],
             title="톤수 분포",
-            labels={'x': '톤수', 'y': '수거함 수'}
+            labels={'톤수': '톤수', '수거함_수': '수거함 수'},
+        ).update_traces(width=0.4).update_layout(
+            xaxis={'categoryorder':'array', 'categoryarray':['5.0톤','8.5톤']},
+            bargap=0,
+            showlegend=False
         )
         
         # 4. 용도별 분포 (도넛 차트)
@@ -1913,13 +1924,11 @@ class WasteRouteOptimizer:
         with tab1:
             st.subheader("📊 데이터 분석 대시보드")
             charts = self.create_dashboard_charts(df)
-            
-            # 차트 2x2 레이아웃
-            col1, col2 = st.columns(2)
+            # 차트 2x2 레이아웃 (간격 조정)
+            col1, col2 = st.columns(2, gap="large")
             with col1:
                 st.plotly_chart(charts['dept_distribution'], use_container_width=True)
                 st.plotly_chart(charts['tonnage_distribution'], use_container_width=True)
-            
             with col2:
                 st.plotly_chart(charts['priority_distribution'], use_container_width=True)
                 st.plotly_chart(charts['usage_distribution'], use_container_width=True)
@@ -1929,7 +1938,13 @@ class WasteRouteOptimizer:
             if routes_data:
                 route_map = self.create_route_map(routes_data)
                 if route_map:
-                    st_folium(route_map, width=700, height=600)
+                    st.markdown("""
+                    <div style='display: flex; justify-content: center; align-items: center; width: 100%; max-width: 1400px; margin: 0 auto; padding: 0 16px;'>
+                    """, unsafe_allow_html=True)
+                    st_folium(route_map, width='100%', height=650)
+                    st.markdown("""
+                    </div>
+                    """, unsafe_allow_html=True)
                 else:
                     st.warning("⚠️ 좌표 데이터가 부족하여 지도를 표시할 수 없습니다.")
             else:
