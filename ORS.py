@@ -109,9 +109,12 @@ class WasteRouteOptimizer:
 
     def normalize_columns(self, df):
         """컬럼명 정규화 및 표준화"""
+        # 1. 컬럼명 앞뒤 공백 제거
+        df.columns = df.columns.str.strip()
         # 컬럼 매핑 (내장 CSV 컬럼명 반영)
         COL_MAP = {
             '박스 위치': '위치',
+            '박스 위치 ': '위치',
             '위치명': '위치',
             '위치': '위치',
             '톤': '톤수',
@@ -130,6 +133,12 @@ class WasteRouteOptimizer:
         }
         # 컬럼명 변경
         df = df.rename(columns={k: v for k, v in COL_MAP.items() if k in df.columns})
+        # '위치' 컬럼이 없고 '박스 위치' 또는 '박스 위치 '가 있으면 우선적으로 복사
+        if '위치' not in df.columns:
+            if '박스 위치' in df.columns:
+                df['위치'] = df['박스 위치']
+            elif '박스 위치 ' in df.columns:
+                df['위치'] = df['박스 위치 ']
         # Unnamed 컬럼 제거
         df = df.loc[:, ~df.columns.str.startswith('Unnamed')]
         # 좌표 데이터 처리
@@ -162,13 +171,6 @@ class WasteRouteOptimizer:
                     df[col] = range(1, len(df) + 1)
                 else:
                     df[col] = ''
-        # 문제가 있는 33번 수거함 제거
-        initial_count = len(df)
-        if '박스번호' in df.columns:
-            df = df[df['박스번호'] != 33]
-            filtered_count = len(df)
-            if filtered_count < initial_count:
-                st.warning("⚠️ 33번 수거함은 좌표 오류로 인해 자동으로 제외되었습니다.")
         return df[STANDARD_COLS]
 
     def calculate_priority_score(self, df):
