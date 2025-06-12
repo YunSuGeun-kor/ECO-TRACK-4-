@@ -519,7 +519,10 @@ class WasteRouteOptimizer:
                 continue
             color = colors[i % len(colors)]
             vehicle_id = route["vehicle_id"]
-            group_name = f'차량 {vehicle_id}'
+            # 차량 유형 표시 (5톤, 8.5톤)
+            vehicle_type = f"{route['capacity']}톤"
+            # HTML 색상 스와치와 차량 유형 포함
+            group_name = f'<span style="display:inline-block;width:14px;height:14px;background:{color};border-radius:50%;margin-right:6px;vertical-align:middle;"></span> 차량 {vehicle_id} ({vehicle_type})'
             vehicle_group = folium.FeatureGroup(name=group_name, show=True)
             # 수거함 위치 CircleMarker + 박스번호 중앙 표시
             for idx, row in route_df.iterrows():
@@ -576,8 +579,10 @@ class WasteRouteOptimizer:
                 ).add_to(vehicle_group)
             vehicle_group.add_to(m)
 
-        # 차량별 FeatureGroup을 LayerControl로 토글
-        folium.LayerControl(collapsed=False).add_to(m)
+        # 차량별 FeatureGroup을 LayerControl로 토글 (HTML 허용)
+        folium.LayerControl(collapsed=False, position='topright',
+            # HTML legend labels
+            ).add_to(m)
         # 기존 범례 제거 (LayerControl이 범례 역할)
         return m
 
