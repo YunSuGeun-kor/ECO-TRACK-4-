@@ -465,7 +465,7 @@ class WasteRouteOptimizer:
         # Folium 지도 생성
         m = folium.Map(
             location=[center_lat, center_lon],
-            zoom_start=15,
+            zoom_start=14,
             tiles='OpenStreetMap'
         )
 
@@ -492,6 +492,19 @@ class WasteRouteOptimizer:
             vehicle_group = folium.FeatureGroup(name=group_name, show=True)
             # 수거함 위치 CircleMarker + 박스번호 중앙 표시
             for idx, row in route_df.iterrows():
+                # 1. 큰(투명) 클릭영역용 CircleMarker (팝업 연결)
+                folium.CircleMarker(
+                    location=[row['좌표_위도'], row['좌표_경도']],
+                    radius=18,  # 클릭 영역 넓게
+                    color=color,
+                    fill=True,
+                    fill_color=color,
+                    fill_opacity=0.01,  # 거의 투명
+                    weight=0,
+                    popup=folium.Popup(f"<b>박스 {row['박스번호']}</b><br>위치: {row['위치']}<br>부서: {row['부서']}<br>톤수: {row['톤수']}<br>용도: {row['용도']}", max_width=250),
+                    tooltip=f"박스 {row['박스번호']} - {row['위치']}"
+                ).add_to(vehicle_group)
+                # 2. 기존 작은 CircleMarker (시각적 표시, 팝업 없음)
                 folium.CircleMarker(
                     location=[row['좌표_위도'], row['좌표_경도']],
                     radius=7,
@@ -499,10 +512,11 @@ class WasteRouteOptimizer:
                     fill=True,
                     fill_color=color,
                     fill_opacity=0.95,
-                    popup=folium.Popup(f"<b>박스 {row['박스번호']}</b><br>위치: {row['위치']}<br>부서: {row['부서']}<br>톤수: {row['톤수']}<br>용도: {row['용도']}", max_width=250),
-                    tooltip=f"박스 {row['박스번호']} - {row['위치']}"
+                    weight=2,
+                    popup=None,
+                    tooltip=None
                 ).add_to(vehicle_group)
-                # 박스번호를 원 중앙에 표시 (DivIcon)
+                # 3. 박스번호를 원 중앙에 표시 (DivIcon)
                 folium.map.Marker(
                     [row['좌표_위도'], row['좌표_경도']],
                     icon=folium.DivIcon(
