@@ -475,7 +475,7 @@ class WasteRouteOptimizer:
         return total_distance
 
     def create_route_map(self, routes_data):
-        """경로 지도 시각화 (Folium 기반, 차량별 토글 가능)"""
+        """경로 지도 시각화 (Folium 기반, 차량별 토글 가능, 박스번호 중앙 표시)"""
         if not routes_data or not routes_data['routes']:
             return None
 
@@ -519,7 +519,7 @@ class WasteRouteOptimizer:
             vehicle_id = route["vehicle_id"]
             group_name = f'차량 {vehicle_id}'
             vehicle_group = folium.FeatureGroup(name=group_name, show=True)
-            # 수거함 위치 CircleMarker 추가
+            # 수거함 위치 CircleMarker + 박스번호 중앙 표시
             for idx, row in route_df.iterrows():
                 folium.CircleMarker(
                     location=[row['좌표_위도'], row['좌표_경도']],
@@ -530,6 +530,15 @@ class WasteRouteOptimizer:
                     fill_opacity=0.95,
                     popup=folium.Popup(f"<b>박스 {row['박스번호']}</b><br>위치: {row['위치']}<br>부서: {row['부서']}<br>톤수: {row['톤수']}<br>용도: {row['용도']}", max_width=250),
                     tooltip=f"박스 {row['박스번호']} - {row['위치']}"
+                ).add_to(vehicle_group)
+                # 박스번호를 원 중앙에 표시 (DivIcon)
+                folium.map.Marker(
+                    [row['좌표_위도'], row['좌표_경도']],
+                    icon=folium.DivIcon(
+                        html=f'<div style="display:flex;align-items:center;justify-content:center;width:14px;height:14px;font-size:11px;font-weight:bold;color:white;text-align:center;pointer-events:none;">{row["박스번호"]}</div>',
+                        icon_size=(14, 14),
+                        icon_anchor=(7, 7)
+                    )
                 ).add_to(vehicle_group)
             # ORS geometry(실제 도로 경로) 표시
             geometry = route.get('geometry')
