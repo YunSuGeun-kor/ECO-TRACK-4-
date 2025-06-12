@@ -475,7 +475,7 @@ class WasteRouteOptimizer:
         return total_distance
 
     def create_route_map(self, routes_data):
-        """경로 지도 시각화 (Folium 기반, 실제 도로 경로 표시)"""
+        """경로 지도 시각화 (Folium 기반, 차량별 토글 가능)"""
         if not routes_data or not routes_data['routes']:
             return None
 
@@ -501,7 +501,7 @@ class WasteRouteOptimizer:
             tiles='OpenStreetMap'
         )
 
-        # 광양제철소 시작점 표시
+        # 광양제철소 시작점 표시 (고정)
         start_location = [34.926157, 127.765076]
         folium.Marker(
             location=start_location,
@@ -510,13 +510,15 @@ class WasteRouteOptimizer:
             icon=folium.Icon(color='black', icon='home', prefix='glyphicon')
         ).add_to(m)
 
-        # 각 차량의 경로 표시
+        # 각 차량의 경로/마커를 FeatureGroup으로 분리
         for i, route in enumerate(routes_data['routes']):
             route_df = route['data']
             if route_df.empty:
                 continue
             color = colors[i % len(colors)]
-            vehicle_group = folium.FeatureGroup(name=f'차량 {route["vehicle_id"]} ({len(route_df)}개소)')
+            vehicle_id = route["vehicle_id"]
+            group_name = f'차량 {vehicle_id}'
+            vehicle_group = folium.FeatureGroup(name=group_name, show=True)
             # 수거함 위치 CircleMarker 추가
             for idx, row in route_df.iterrows():
                 folium.CircleMarker(
@@ -544,16 +546,14 @@ class WasteRouteOptimizer:
                 elif isinstance(geometry, list) and len(geometry) > 0:
                     if all(isinstance(coord, (list, tuple)) and len(coord) >= 2 for coord in geometry):
                         coords = [[lat, lon] for lon, lat in geometry]
-            # PolyLine(실제 경로) 추가
             if coords and len(coords) > 1:
                 folium.PolyLine(
                     locations=coords,
                     weight=4,
                     color=color,
                     opacity=0.85,
-                    popup=f'차량 {route["vehicle_id"]} 실제 경로'
+                    popup=f'차량 {vehicle_id} 실제 경로'
                 ).add_to(vehicle_group)
-            # geometry가 없으면 기존 직선 연결
             elif len(route_df) > 1:
                 coords = [[row['좌표_위도'], row['좌표_경도']] for _, row in route_df.iterrows()]
                 folium.PolyLine(
@@ -561,20 +561,13 @@ class WasteRouteOptimizer:
                     weight=4,
                     color=color,
                     opacity=0.85,
-                    popup=f'차량 {route["vehicle_id"]} 경로'
+                    popup=f'차량 {vehicle_id} 경로'
                 ).add_to(vehicle_group)
             vehicle_group.add_to(m)
 
-        # 레이어 컨트롤 추가
-        folium.LayerControl().add_to(m)
-        # 범례(차량별 색상만 간결하게)
-        legend_html = '<div style="position: fixed; bottom: 50px; left: 50px; width: 220px; background: white; border:2px solid #888; z-index:9999; font-size:13px; padding: 10px; border-radius: 8px; box-shadow: 2px 2px 8px #aaa;">'
-        legend_html += '<b>차량별 색상 안내</b><br>'
-        for i, route in enumerate(routes_data['routes']):
-            color = colors[i % len(colors)]
-            legend_html += f'<span style="display:inline-block;width:18px;height:18px;background:{color};border-radius:50%;margin-right:8px;"></span>차량 {route["vehicle_id"]}<br>'
-        legend_html += '</div>'
-        m.get_root().html.add_child(folium.Element(legend_html))
+        # 차량별 FeatureGroup을 LayerControl로 토글
+        folium.LayerControl(collapsed=False).add_to(m)
+        # 기존 범례 제거 (LayerControl이 범례 역할)
         return m
 
     def decode_polyline(self, polyline_str):
