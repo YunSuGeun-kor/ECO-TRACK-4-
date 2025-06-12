@@ -474,189 +474,84 @@ class WasteRouteOptimizer:
         return total_distance
 
     def create_route_map(self, routes_data):
-        """경로 지도 시각화 (Folium 기반)"""
+        """경로 지도 시각화 (Folium 기반, 가독성 개선)"""
         if not routes_data or not routes_data['routes']:
             return None
-        
-        # 색상 팔레트
-        colors = ['red', 'blue', 'green', 'orange', 'purple', 'brown', 'pink', 'darkgreen']
-        
+
+        # 진한 색상 팔레트 (차량별)
+        colors = ['#1f77b4', '#d62728', '#2ca02c', '#9467bd', '#ff7f0e', '#8c564b', '#e377c2', '#7f7f7f']
+
         # 중심 좌표 계산
         all_lats = []
         all_lons = []
-        
         for route in routes_data['routes']:
             if not route['data'].empty:
                 all_lats.extend(route['data']['좌표_위도'].tolist())
                 all_lons.extend(route['data']['좌표_경도'].tolist())
-        
         if not all_lats:
             return None
-            
         center_lat = sum(all_lats) / len(all_lats)
         center_lon = sum(all_lons) / len(all_lons)
-        
+
         # Folium 지도 생성
         m = folium.Map(
             location=[center_lat, center_lon],
-            zoom_start=12,
+            zoom_start=13,
             tiles='OpenStreetMap'
         )
-        
+
         # 광양제철소 시작점 표시
-        start_location = [34.9006, 127.7669]
+        start_location = [34.926157, 127.765076]
         folium.Marker(
             location=start_location,
             popup='<b>광양제철소</b><br>차량 출발/도착지',
             tooltip='광양제철소 (시작점)',
             icon=folium.Icon(color='black', icon='home', prefix='glyphicon')
         ).add_to(m)
-        
+
         # 각 차량의 경로 표시
         for i, route in enumerate(routes_data['routes']):
             route_df = route['data']
             if route_df.empty:
                 continue
-                
             color = colors[i % len(colors)]
-            
             # 차량별 FeatureGroup 생성
             vehicle_group = folium.FeatureGroup(name=f'차량 {route["vehicle_id"]} ({len(route_df)}개소)')
-            
-            # 수거함 위치 마커 추가
+            # 수거함 위치 CircleMarker 추가
             for idx, row in route_df.iterrows():
-                # 우선순위에 따른 아이콘 및 색상 선택
-                if row['우선순위'] == 1:
-                    icon_name = 'exclamation-sign'
-                    marker_color = 'red'
-                elif row['우선순위'] == 2:
-                    icon_name = 'info-sign'
-                    marker_color = 'orange'
-                else:
-                    icon_name = 'ok-sign'
-                    marker_color = 'green'
-                
-                # 팝업 내용 생성
-                popup_content = f"""
-                <div style="font-family: Arial; font-size: 12px; width: 220px;">
-                    <b style="color: {color};">박스 {row['박스번호']}</b><br>
-                    <b>위치:</b> {row['위치']}<br>
-                    <b>부서:</b> {row['부서']}<br>
-                    <b>우선순위:</b> {row['우선순위']} ({'높음' if row['우선순위'] == 1 else '보통' if row['우선순위'] == 2 else '낮음'})<br>
-                    <b>톤수:</b> {row['톤수']}톤<br>
-                    <b>용도:</b> {row['용도']}<br>
-                    <b>수거빈도:</b> {row['수거빈도']}일<br>
-                    <b>지연일수:</b> {row['지연일수']}일<br>
-                    <b>담당차량:</b> <span style="color: {color};">차량 {route["vehicle_id"]}</span>
-                </div>
-                """
-                
-                folium.Marker(
+                folium.CircleMarker(
                     location=[row['좌표_위도'], row['좌표_경도']],
-                    popup=folium.Popup(popup_content, max_width=250),
-                    tooltip=f"박스 {row['박스번호']} - {row['위치']}",
-                    icon=folium.Icon(
-                        color=marker_color,
-                        icon=icon_name,
-                        prefix='glyphicon'
-                    )
+                    radius=7,  # 작고 깔끔하게
+                    color=color,
+                    fill=True,
+                    fill_color=color,
+                    fill_opacity=0.95,
+                    popup=folium.Popup(f"<b>박스 {row['박스번호']}</b><br>위치: {row['위치']}<br>부서: {row['부서']}<br>톤수: {row['톤수']}<br>용도: {row['용도']}", max_width=250),
+                    tooltip=f"박스 {row['박스번호']} - {row['위치']}"
                 ).add_to(vehicle_group)
-                
-                # 박스 번호를 마커 근처에 표시
-                folium.map.Marker(
-                    [row['좌표_위도'], row['좌표_경도']],
-                    icon=folium.DivIcon(
-                        html=f'<div style="font-size: 10px; color: {color}; font-weight: bold; text-shadow: 1px 1px 1px white;">{row["박스번호"]}</div>',
-                        icon_size=(20, 20),
-                        icon_anchor=(10, -5)
-                    )
+            # PolyLine(실선)으로 경로 표시
+            if len(route_df) > 1:
+                coords = [[row['좌표_위도'], row['좌표_경도']] for _, row in route_df.iterrows()]
+                folium.PolyLine(
+                    locations=coords,
+                    weight=4,
+                    color=color,
+                    opacity=0.85,
+                    popup=f'차량 {route["vehicle_id"]} 경로'
                 ).add_to(vehicle_group)
-            
-            # ORS 최적화된 경로 표시
-            if route.get('ors_optimized') and route.get('geometry'):
-                try:
-                    geometry = route['geometry']
-                    route_coords = []
-                    
-                    # 다양한 geometry 형식 처리
-                    if isinstance(geometry, dict) and 'coordinates' in geometry:
-                        coordinates = geometry['coordinates']
-                        route_coords = [[lat, lon] for lon, lat in coordinates]
-                    elif isinstance(geometry, list) and len(geometry) > 0:
-                        if all(isinstance(coord, (list, tuple)) and len(coord) >= 2 for coord in geometry):
-                            route_coords = [[lat, lon] for lon, lat in geometry]
-                    elif isinstance(geometry, str):
-                        decoded_coords = self.decode_polyline(geometry)
-                        route_coords = [[lat, lon] for lat, lon in decoded_coords] if decoded_coords else []
-                    
-                    if route_coords and len(route_coords) > 1:
-                        folium.PolyLine(
-                            locations=route_coords,
-                            weight=5,
-                            color=color,
-                            opacity=0.8,
-                            popup=f'차량 {route["vehicle_id"]} ORS 최적화 경로'
-                        ).add_to(vehicle_group)
-                    else:
-                        # geometry 처리 실패시 기본 라인 표시
-                        if len(route_df) > 1:
-                            coords = [[row['좌표_위도'], row['좌표_경도']] for _, row in route_df.iterrows()]
-                            folium.PolyLine(
-                                locations=coords,
-                                weight=3,
-                                color=color,
-                                opacity=0.6,
-                                dash_array='5, 5',
-                                popup=f'차량 {route["vehicle_id"]} 근사 경로'
-                            ).add_to(vehicle_group)
-                except Exception as e:
-                    # 경로 표시 실패시 기본 라인으로 대체
-                    if len(route_df) > 1:
-                        coords = [[row['좌표_위도'], row['좌표_경도']] for _, row in route_df.iterrows()]
-                        folium.PolyLine(
-                            locations=coords,
-                            weight=3,
-                            color=color,
-                            opacity=0.6,
-                            dash_array='5, 5',
-                            popup=f'차량 {route["vehicle_id"]} 근사 경로'
-                        ).add_to(vehicle_group)
-            else:
-                # 기본 직선 경로 표시
-                if len(route_df) > 1:
-                    coords = [[row['좌표_위도'], row['좌표_경도']] for _, row in route_df.iterrows()]
-                    folium.PolyLine(
-                        locations=coords,
-                        weight=3,
-                        color=color,
-                        opacity=0.6,
-                        dash_array='5, 5',
-                        popup=f'차량 {route["vehicle_id"]} 근사 경로'
-                    ).add_to(vehicle_group)
-            
-            # 차량 그룹을 지도에 추가
             vehicle_group.add_to(m)
-        
+
         # 레이어 컨트롤 추가
         folium.LayerControl().add_to(m)
-        
-        # 범례 추가
-        legend_html = '''
-        <div style="position: fixed; 
-                    bottom: 50px; left: 50px; width: 200px; height: 120px; 
-                    background-color: white; border:2px solid grey; z-index:9999; 
-                    font-size:12px; padding: 10px; border-radius: 5px;">
-        <p style="margin: 0 0 8px 0;"><b>우선순위 표시</b></p>
-        <p style="margin: 2px 0;"><i class="glyphicon glyphicon-exclamation-sign" style="color: red;"></i> 높음 (1) - 빨간색</p>
-        <p style="margin: 2px 0;"><i class="glyphicon glyphicon-info-sign" style="color: orange;"></i> 보통 (2) - 주황색</p>
-        <p style="margin: 2px 0;"><i class="glyphicon glyphicon-ok-sign" style="color: green;"></i> 낮음 (3) - 녹색</p>
-        <p style="margin: 8px 0 2px 0;"><b>경로 표시</b></p>
-        <p style="margin: 2px 0;">━━━ 실선: ORS 최적화 경로</p>
-        <p style="margin: 2px 0;">┅┅┅ 점선: 근사 경로</p>
-        </div>
-        '''
+
+        # 범례(차량별 색상만 간결하게)
+        legend_html = '<div style="position: fixed; bottom: 50px; left: 50px; width: 220px; background: white; border:2px solid #888; z-index:9999; font-size:13px; padding: 10px; border-radius: 8px; box-shadow: 2px 2px 8px #aaa;">'
+        legend_html += '<b>차량별 색상 안내</b><br>'
+        for i, route in enumerate(routes_data['routes']):
+            color = colors[i % len(colors)]
+            legend_html += f'<span style="display:inline-block;width:18px;height:18px;background:{color};border-radius:50%;margin-right:8px;"></span>차량 {route["vehicle_id"]}<br>'
+        legend_html += '</div>'
         m.get_root().html.add_child(folium.Element(legend_html))
-        
         return m
 
     def decode_polyline(self, polyline_str):
