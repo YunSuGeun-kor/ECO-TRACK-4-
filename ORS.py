@@ -33,6 +33,9 @@ import warnings
 warnings.filterwarnings('ignore')
 from io import StringIO
 import polyline
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 # 페이지 설정
 st.set_page_config(
@@ -1919,7 +1922,7 @@ class WasteRouteOptimizer:
         self.display_metrics(df, routes_data)
         
         # 탭 구성
-        tab1, tab2, tab3, tab4 = st.tabs(["📈 대시보드", "🗺️ 경로 지도", "📋 데이터 테이블", "📊 경로 분석"])
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(["📈 대시보드", "🗺️ 경로 지도", "📋 데이터 테이블", "📊 경로 분석", "💬 유저 피드백"])
         
         with tab1:
             st.subheader("📊 데이터 분석 대시보드")
@@ -2036,6 +2039,46 @@ class WasteRouteOptimizer:
                 self.display_insights_section(df, routes_data)
             else:
                 st.info("🚀 경로 최적화를 먼저 실행해주세요.")
+        
+        with tab5:
+            st.subheader("💬 유저 피드백 보내기")
+            st.write("서비스 개선을 위한 의견이나 불편사항, 제안사항을 자유롭게 남겨주세요!")
+            with st.form("feedback_form"):
+                user_name = st.text_input("이름 (선택)")
+                user_email = st.text_input("이메일 (선택)")
+                feedback = st.text_area("피드백 내용", max_chars=1000, height=180)
+                submitted = st.form_submit_button("피드백 전송")
+            if submitted:
+                if not feedback.strip():
+                    st.error("피드백 내용을 입력해주세요.")
+                else:
+                    try:
+                        # 메일 전송 설정 (SMTP 정보는 실제 운영시 환경변수 등으로 관리 권장)
+                        smtp_host = 'smtp.example.com'  # 실제 SMTP 서버 주소로 변경
+                        smtp_port = 587
+                        smtp_user = 'your_email@example.com'  # 실제 발신자 이메일
+                        smtp_pass = 'your_password'           # 실제 비밀번호
+                        sender = smtp_user
+                        receiver = 'cf100@posco.com'
+                        subject = '[광양제철소 폐기물 경로 최적화] 유저 피드백'
+                        body = f"""
+                        [유저 피드백 도착]
+                        이름: {user_name}
+                        이메일: {user_email}
+                        내용:\n{feedback}
+                        """
+                        msg = MIMEMultipart()
+                        msg['From'] = sender
+                        msg['To'] = receiver
+                        msg['Subject'] = subject
+                        msg.attach(MIMEText(body, 'plain'))
+                        with smtplib.SMTP(smtp_host, smtp_port) as server:
+                            server.starttls()
+                            server.login(smtp_user, smtp_pass)
+                            server.sendmail(sender, receiver, msg.as_string())
+                        st.success("피드백이 성공적으로 전송되었습니다. 소중한 의견 감사합니다!")
+                    except Exception as e:
+                        st.error(f"피드백 전송 중 오류가 발생했습니다: {e}")
 
 if __name__ == "__main__":
     # 애플리케이션 실행
