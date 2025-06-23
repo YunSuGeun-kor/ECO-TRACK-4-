@@ -32,12 +32,11 @@ st.set_page_config(
 class WasteRouteOptimizer:
     def __init__(self):
         # ORS API 설정
-        self.ors_api_key = "5b3ce3597851110001cf62489c2d4dea20f4405f9f1d318f1e2733c1"
+        self.ors_api_key = st.secrets["ORS_API_KEY"]
         self.ors_client = ors.Client(key=self.ors_api_key)
         
         # OpenAI 클라이언트 초기화
-        self.openai_client = openai.OpenAI(api_key="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")
-        
+        self.openai_client = openai.OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
         self.init_session()
         
     def init_session(self):
